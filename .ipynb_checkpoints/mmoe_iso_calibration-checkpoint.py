@@ -109,10 +109,6 @@ train_dl = DataLoader(train_ds, batch_size=batch_size, shuffle=True)
 val_dl   = DataLoader(val_ds,   batch_size=batch_size, shuffle=False)
 test_dl  = DataLoader(test_ds,  batch_size=batch_size, shuffle=False)
 
-# Ensure y_train_np is defined
-# Assuming y_train_np corresponds to the training labels in NumPy format
-y_train_np = np.concatenate([y_batch.numpy() for _, y_batch in train_dl], axis=0)
-
 # ---- 4. Training & Validation ----
 input_size = X_np.shape[1]
 num_experts = 8
@@ -230,61 +226,3 @@ plt.legend()
 plt.grid(True)
 plt.tight_layout()
 plt.show()
-
-# ---- 7. Distribution of Calibrated Probabilities ----
-# Plot the distribution of calibrated predicted probabilities for each class
-plt.figure(figsize=(16, 10))
-for i, task in enumerate(outcome_list):
-    plt.subplot(4, 4, i + 1)  # Adjust the grid size based on the number of outcomes
-    plt.hist(test_probs[:, i], bins=20, alpha=0.7, color='blue', edgecolor='black')
-    plt.title(f"{task} Probability Distribution")
-    plt.xlabel("Calibrated Probability")
-    plt.ylabel("Frequency")
-    plt.grid(True)
-plt.tight_layout()
-plt.show()
-
-# ---- 8. Distribution of Probability Ratios ----
-# Calculate the proportion of 1s to total population in the training data
-train_proportions = np.zeros(len(outcome_list))
-train_total = 0
-
-# Iterate through the DataLoader to calculate proportions
-for _, y_batch in train_dl:
-    train_proportions += y_batch.sum(dim=0).numpy()
-    train_total += y_batch.size(0)
-train_proportions /= train_total
-
-# Calculate the ratio of calibrated predicted probability to the training proportion
-probability_ratios = test_probs / train_proportions
-
-# Plot the distribution of the probability ratios for each outcome
-plt.figure(figsize=(16, 10))
-for i, task in enumerate(outcome_list):
-    plt.subplot(4, 4, i + 1)  # Adjust the grid size based on the number of outcomes
-    plt.hist(probability_ratios[:, i], bins=20, alpha=0.7, color='green', edgecolor='black')
-    plt.title(f"{task} Probability Ratio Distribution")
-    plt.xlabel("Probability Ratio")
-    plt.ylabel("Frequency")
-    plt.grid(True)
-plt.tight_layout()
-plt.show()
-
-# ---- 9. Create DataFrame for a Random Test Case ----
-import pandas as pd
-
-# Pick a random row from the test dataset
-random_index = np.random.randint(0, test_probs.shape[0])
-random_probabilities = test_probs[random_index, :]
-random_ratios = probability_ratios[random_index, :]
-
-# Create a DataFrame to store the results
-data = {
-    "lift": random_ratios,
-    "calibrated probability": random_probabilities,
-    "populational baseline": train_proportions  # Add train_proportions as a new column
-}
-result_df = pd.DataFrame(data, index=outcome_list)
-
-# Display the DataFrame
-print(result_df)
