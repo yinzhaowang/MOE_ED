@@ -3,9 +3,11 @@ from dash import Dash, html, dcc, Input, Output
 import pandas as pd
 import plotly.express as px
 import torch
-from torch.utils.data import TensorDataset, DataLoader, random_split
+from torch.utils.data import TensorDataset, DataLoader
 from files.mmoe_iso_calibration import MMoE, IsotonicCalibrator, outcome_list, col_list
 import numpy as np
+import joblib
+import os
 
 # Initialize the Dash app
 app = Dash(__name__)
@@ -21,7 +23,9 @@ y_np = df_test.loc[:, outcome_list].to_numpy(dtype=float)
 X_t = torch.from_numpy(X_np).float()
 y_t = torch.from_numpy(y_np).float()
 dataset = TensorDataset(X_t, y_t)
-test_dl = DataLoader(dataset, batch_size=256, shuffle=False)
+
+batch_size = 256  # Define batch size if not already defined
+test_dl = DataLoader(dataset, batch_size=batch_size, shuffle=False)
 
 # ---- Model Loading ----
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -36,39 +40,16 @@ model = MMoE(input_size, num_experts, expert_hidden, expert_output_dim, tower_hi
 model.load_state_dict(torch.load("files/best_mmoe_iso.pt", map_location=device))
 model.eval()
 
-# ---- Perform Calibration ----
-calibrator = IsotonicCalibrator(num_tasks=len(outcome_list))
-test_logits = []
-with torch.no_grad():
-    for X_batch, _ in test_dl:
-        X_batch = X_batch.to(device)
-        logits_list = model(X_batch)
-        logits = torch.cat(logits_list, dim=1)
-        test_logits.append(logits)
-test_logits = torch.cat(test_logits, dim=0).cpu().numpy()
-test_probs = calibrator.predict(test_logits)
+# ---- Calibration Setup ----
+# Load the pre-fitted calibrator
+calibrator_path = "files/calibrator.pkl"
+if os.path.exists(calibrator_path):
+    calibrator = joblib.load(calibrator_path)
+    print("Loaded pre-fitted calibrator from file.")
+else:
+    raise FileNotFoundError(f"Calibrator file not found at {calibrator_path}. Please ensure the file exists.")
 
-# Calculate train proportions (placeholder for actual proportions)
-train_proportions = np.random.rand(len(outcome_list))  # Replace with actual proportions
-probability_ratios = test_probs / train_proportions
-
-# ---- Dashboard Layout ----
-app.layout = html.Div([
-    html.H1("ED Decision-Making Dashboard", style={"textAlign": "center"}),
-
-    html.Div([
-        html.Label("Select Test Case Row:"),
-        dcc.Input(id="row-input", type="number", min=0, max=test_probs.shape[0] - 1, step=1, value=0),
-    ], style={"margin": "20px"}),
-
-    html.Div([
-        html.H2("Selected Test Case Results"),
-        dcc.Graph(id="lift-bar-chart"),
-        dcc.Graph(id="calibrated-probability-bar-chart"),
-    ])
-])
-
-# ---- Callbacks ----
+# Callback to dynamically calibrate and predict for the selected row
 @app.callback(
     [Output("lift-bar-chart", "figure"),
      Output("calibrated-probability-bar-chart", "figure")],
@@ -76,17 +57,28 @@ app.layout = html.Div([
 )
 def update_charts(selected_row):
     # Ensure the selected row is valid
-    if selected_row is None or selected_row < 0 or selected_row >= test_probs.shape[0]:
+    if selected_row is None or selected_row < 0 or selected_row >= X_np.shape[0]:
         selected_row = 0
 
-    # Extract data for the selected row
-    random_probabilities = test_probs[selected_row, :]
-    random_ratios = probability_ratios[selected_row, :]
+    # Extract the selected row
+    X_selected = torch.from_numpy(X_np[selected_row:selected_row + 1]).float().to(device)
+
+    # Run the model on the selected row
+    with torch.no_grad():
+        logits_list = model(X_selected)
+        logits = torch.cat(logits_list, dim=1).cpu().numpy()
+
+    # Perform calibration
+    calibrated_probs = calibrator.predict(logits)
+
+    # Calculate probability ratios
+    train_proportions = np.random.rand(len(outcome_list))  # Replace with actual proportions
+    probability_ratios = calibrated_probs / train_proportions
 
     # Create DataFrame
     data = {
-        "lift": random_ratios,
-        "calibrated probability": random_probabilities,
+        "lift": probability_ratios.flatten(),
+        "calibrated probability": calibrated_probs.flatten(),
         "populational baseline": train_proportions
     }
     result_df = pd.DataFrame(data, index=outcome_list)
@@ -97,6 +89,22 @@ def update_charts(selected_row):
 
     return lift_fig, calibrated_prob_fig
 
+# ---- Dashboard Layout ----
+app.layout = html.Div([
+    html.H1("ED Decision-Making Dashboard", style={"textAlign": "center"}),
+
+    html.Div([
+        html.Label("Select Test Case Row:"),
+        dcc.Input(id="row-input", type="number", min=0, max=X_np.shape[0] - 1, step=1, value=0),
+    ], style={"margin": "20px"}),
+
+    html.Div([
+        html.H2("Selected Test Case Results"),
+        dcc.Graph(id="lift-bar-chart"),
+        dcc.Graph(id="calibrated-probability-bar-chart"),
+    ])
+])
+
 # Run the app
 if __name__ == "__main__":
-    app.run_server(debug=True)
+    app.run(debug=True)
