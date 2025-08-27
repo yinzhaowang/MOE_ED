@@ -71,8 +71,8 @@ def update_charts(selected_row):
     # Perform calibration
     calibrated_probs = calibrator.predict(logits)
 
-    # Calculate probability ratios
-    train_proportions = np.random.rand(len(outcome_list))  # Replace with actual proportions
+    # Calculate probability ratios using actual proportions of 1s in each outcome
+    train_proportions = df_test[outcome_list].mean().values  # Proportion of 1s for each outcome
     probability_ratios = calibrated_probs / train_proportions
 
     # Create DataFrame
