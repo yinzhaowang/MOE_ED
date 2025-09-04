@@ -52,7 +52,8 @@ else:
 
 # Callback to dynamically calibrate and predict for the selected row
 @app.callback(
-    Output("lift-bar-chart", "figure"),
+    [Output("lift-bar-chart", "figure"),
+     Output("calibrated-probability-bar-chart", "figure")],
     [Input("row-input", "value")]
 )
 def update_charts(selected_row):
@@ -71,56 +72,27 @@ def update_charts(selected_row):
     # Perform calibration
     calibrated_probs = calibrator.predict(logits)
 
-    # Remove 'outcome_hospitalization' and clean up variable names
-    exclude = 'outcome_hospitalization'
-    filtered_outcomes = [o for o in outcome_list if o != exclude]
-    train_proportions = df_test[filtered_outcomes].mean().values
-    calibrated_probs_filtered = calibrated_probs[:, [i for i, o in enumerate(outcome_list) if o != exclude]]
-    probability_ratios = np.log(calibrated_probs_filtered / train_proportions)
-
-    # Clean variable names: remove 'outcome_' and capitalize
-    def pretty_name(name):
-        disease = name.replace('outcome_', '').replace('_', ' ')
-        return disease.capitalize()
-    pretty_names = [pretty_name(o) for o in filtered_outcomes]
+    # Calculate probability ratios using actual proportions of 1s in each outcome
+    train_proportions = df_test[outcome_list].mean().values  # Proportion of 1s for each outcome
+    probability_ratios = np.log(calibrated_probs / train_proportions)
 
     # Create DataFrame
     data = {
         "lift": probability_ratios.flatten(),
-        "calibrated probability": calibrated_probs_filtered.flatten(),
-        "populational baseline": train_proportions,
-        "Outcome": pretty_names
+        "calibrated probability": calibrated_probs.flatten(),
+        "populational baseline": train_proportions
     }
-    result_df = pd.DataFrame(data)
+    result_df = pd.DataFrame(data, index=outcome_list)
 
-    # Sort by lift: ascending order
-    lift_sorted = result_df.sort_values("lift", ascending=True)
+    # Sort by value descending for each plot
+    lift_sorted = result_df.sort_values("lift", ascending=False)
+    calibrated_prob_sorted = result_df.sort_values("calibrated probability", ascending=False)
 
-    # Color for lift: blue for negative, red for positive, with descriptive labels
-    def risk_label(x):
-        return "Positive risk" if x >= 0 else "Negative risk"
-    lift_sorted["risk"] = lift_sorted["lift"].apply(risk_label)
+    # Create vertical bar charts (x=values, y=outcomes)
+    lift_fig = px.bar(lift_sorted, x="lift", y=lift_sorted.index, orientation="h", title="Lift by Outcome (Descending)")
+    calibrated_prob_fig = px.bar(calibrated_prob_sorted, x="calibrated probability", y=calibrated_prob_sorted.index, orientation="h", title="Calibrated Probability by Outcome (Descending)")
 
-    # Make variable names more visible (larger font, Outcome axis), extend y-axis
-    lift_fig = px.bar(
-        lift_sorted,
-        x="lift",
-        y="Outcome",
-        orientation="h",
-        color="risk",
-        color_discrete_map={"Positive risk": "#d62728", "Negative risk": "#1f77b4"},
-        title="Risk by Outcome (Ascending)",
-        labels={"lift": "Log Lift", "Outcome": "Outcome", "risk": "Risk Direction"}
-    )
-    lift_fig.update_layout(
-        yaxis=dict(tickfont=dict(size=18), automargin=True),
-        xaxis_title_font=dict(size=18),
-        yaxis_title_font=dict(size=18),
-        height=40*len(lift_sorted)+200  # Extend y-axis for more space
-    )
-    lift_fig.update_traces(marker_line_width=1.5)
-
-    return lift_fig  # Return the figure object directly for Dash compatibility
+    return lift_fig, calibrated_prob_fig
 
 # ---- Dashboard Layout ----
 app.layout = html.Div([
@@ -134,6 +106,7 @@ app.layout = html.Div([
     html.Div([
         html.H2("Selected Test Case Results"),
         dcc.Graph(id="lift-bar-chart"),
+        dcc.Graph(id="calibrated-probability-bar-chart"),
     ])
 ])
 

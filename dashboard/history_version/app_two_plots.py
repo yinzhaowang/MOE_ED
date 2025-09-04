@@ -52,7 +52,8 @@ else:
 
 # Callback to dynamically calibrate and predict for the selected row
 @app.callback(
-    Output("lift-bar-chart", "figure"),
+    [Output("lift-bar-chart", "figure"),
+     Output("calibrated-probability-bar-chart", "figure")],
     [Input("row-input", "value")]
 )
 def update_charts(selected_row):
@@ -93,34 +94,39 @@ def update_charts(selected_row):
     }
     result_df = pd.DataFrame(data)
 
-    # Sort by lift: ascending order
-    lift_sorted = result_df.sort_values("lift", ascending=True)
+    # Sort by lift: largest positive to smallest negative
+    lift_sorted = result_df.sort_values("lift", ascending=False)
+    calibrated_prob_sorted = result_df.sort_values("calibrated probability", ascending=False)
 
-    # Color for lift: blue for negative, red for positive, with descriptive labels
-    def risk_label(x):
-        return "Positive risk" if x >= 0 else "Negative risk"
-    lift_sorted["risk"] = lift_sorted["lift"].apply(risk_label)
+    # Color for lift: blue for positive, red for negative
+    lift_sorted["color"] = lift_sorted["lift"].apply(lambda x: "blue" if x >= 0 else "red")
 
-    # Make variable names more visible (larger font, Outcome axis), extend y-axis
+    # Make variable names more visible (larger font, Outcome axis)
     lift_fig = px.bar(
         lift_sorted,
         x="lift",
         y="Outcome",
         orientation="h",
-        color="risk",
-        color_discrete_map={"Positive risk": "#d62728", "Negative risk": "#1f77b4"},
-        title="Risk by Outcome (Ascending)",
-        labels={"lift": "Log Lift", "Outcome": "Outcome", "risk": "Risk Direction"}
+        color="color",
+        color_discrete_map={"blue": "#1f77b4", "red": "#d62728"},
+        title="Log Lift by Outcome (Descending)",
+        labels={"lift": "Log Lift", "Outcome": "Outcome"}
     )
-    lift_fig.update_layout(
-        yaxis=dict(tickfont=dict(size=18), automargin=True),
-        xaxis_title_font=dict(size=18),
-        yaxis_title_font=dict(size=18),
-        height=40*len(lift_sorted)+200  # Extend y-axis for more space
-    )
+    lift_fig.update_layout(yaxis=dict(tickfont=dict(size=16)), xaxis_title_font=dict(size=16), yaxis_title_font=dict(size=16))
     lift_fig.update_traces(marker_line_width=1.5)
 
-    return lift_fig  # Return the figure object directly for Dash compatibility
+    calibrated_prob_fig = px.bar(
+        calibrated_prob_sorted,
+        x="calibrated probability",
+        y="Outcome",
+        orientation="h",
+        title="Calibrated Probability by Outcome (Descending)",
+        labels={"calibrated probability": "Calibrated Probability", "Outcome": "Outcome"}
+    )
+    calibrated_prob_fig.update_layout(yaxis=dict(tickfont=dict(size=16)), xaxis_title_font=dict(size=16), yaxis_title_font=dict(size=16))
+    calibrated_prob_fig.update_traces(marker_line_width=1.5)
+
+    return lift_fig, calibrated_prob_fig
 
 # ---- Dashboard Layout ----
 app.layout = html.Div([
@@ -134,6 +140,7 @@ app.layout = html.Div([
     html.Div([
         html.H2("Selected Test Case Results"),
         dcc.Graph(id="lift-bar-chart"),
+        dcc.Graph(id="calibrated-probability-bar-chart"),
     ])
 ])
 
