@@ -1,0 +1,6 @@
+#
+# Ignore everything by default, but keep the dashboard directory.
+#
+*
+!.gitignore
+!dashboard/
