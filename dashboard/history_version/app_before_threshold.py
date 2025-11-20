@@ -76,35 +76,16 @@ def update_charts(selected_row):
     # Remove 'outcome_hospitalization' and clean up variable names
     exclude = 'outcome_hospitalization'
     filtered_outcomes = [o for o in outcome_list if o != exclude]
+    train_proportions = df_test[filtered_outcomes].mean().values
     calibrated_probs_filtered = calibrated_probs[:, [i for i, o in enumerate(outcome_list) if o != exclude]]
     
-    # Use predefined thresholds instead of train_proportions
-    thresholds = {
-        'outcome_copd_exac': 0.022,
-        'outcome_acs_mi': 0.018,
-        'outcome_sepsis': 0.022,
-        'outcome_critical': 0.080,
-        'outcome_stroke': 0.049,
-        'outcome_aki': 0.055,
-        'outcome_pneumonia_bacterial': 0.003,
-        'outcome_ards': 0.001,
-        'outcome_hospitalization': 0.471,
-        'outcome_pneumonia_viral': 0.002,
-        'outcome_pe': 0.010,
-        'outcome_pneumonia_all': 0.008,
-        'outcome_ed_revisit_3d': 0.030
-    }
-    
-    # Get thresholds for filtered outcomes in the same order
-    threshold_values = np.array([thresholds[o] for o in filtered_outcomes])
-    
     # Calculate probability ratios using log-odds ratio:
-    # log(calibrated/(1-calibrated)) - log(threshold/(1-threshold))
-    # This compares the log-odds of the prediction to the log-odds of the threshold
-    #calibrated_odds = calibrated_probs_filtered / (1 - calibrated_probs_filtered)
-    #threshold_odds = threshold_values / (1 - threshold_values)
-    #probability_ratios = np.log(calibrated_odds) - np.log(threshold_odds)
-    probability_ratios = np.log(calibrated_probs_filtered/threshold_values)
+    # log(calibrated/(1-calibrated)) - log(train_proportions/(1-train_proportions))
+    # This compares the log-odds of the prediction to the log-odds of the baseline rate
+    calibrated_odds = calibrated_probs_filtered / (1 - calibrated_probs_filtered)
+    population_odds = train_proportions / (1 - train_proportions)
+    probability_ratios = np.log(calibrated_odds) - np.log(population_odds)
+
     # Clean variable names: remove 'outcome_' and capitalize
     def pretty_name(name):
         # Map outcome names to full medical terms
@@ -118,7 +99,7 @@ def update_charts(selected_row):
             'outcome_ards': 'Acute Respiratory Distress Syndrome',
             'outcome_pe': 'Pulmonary Embolism',
             'outcome_copd_exac': 'COPD Exacerbation',
-            'outcome_acs_mi': 'Acute Coronary Syndrome/Myocardial Infarction',
+            'outcome_acs_mi': 'Acute Coronary Syndrome/MI',
             'outcome_stroke': 'Stroke',
             'outcome_aki': 'Acute Kidney Injury'
         }
@@ -134,7 +115,7 @@ def update_charts(selected_row):
     data = {
         "lift": probability_ratios.flatten(),
         "calibrated probability": calibrated_probs_filtered.flatten(),
-        "threshold": threshold_values,
+        "populational baseline": train_proportions,
         "Outcome": pretty_names
     }
     result_df = pd.DataFrame(data)
@@ -155,8 +136,8 @@ def update_charts(selected_row):
         orientation="h",
         color="risk",
         color_discrete_map={"Positive risk": "#d62728", "Negative risk": "#1f77b4"},
-        title="Risk by Outcome (Log-Lift Ratio, Ascending)",
-        labels={"lift": "Log-Lift Ratio", "Outcome": "Outcome", "risk": "Risk Direction"}
+        title="Risk by Outcome (Log-Odds Ratio, Ascending)",
+        labels={"lift": "Log-Odds Ratio", "Outcome": "Outcome", "risk": "Risk Direction"}
     )
     lift_fig.update_layout(
         yaxis=dict(tickfont=dict(size=14), automargin=True),  # Reduced font size from 18 to 16
@@ -210,13 +191,13 @@ def update_charts(selected_row):
             font=dict(size=12),
             height=25  # Make all cells same height as lift bars
         ),
-        columnwidth=[0.9, 0.6, 0.6]  # Adjusted column widths after removing columns
+        columnwidth=[0.9, 0.6, 0.6]  # Make columns equal width and narrower overall
     )])
     
     table_fig.update_layout(
         title="Patient Outcomes",
         height=len(lift_sorted)*30+190,  # Match the extended lift figure height (+40)
-        width=400,  # Narrower table after removing columns
+        width=400,  # Narrower table
         margin=dict(l=0, r=0, t=50, b=50)  # Reduce margins to match chart
     )
     
