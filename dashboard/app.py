@@ -36,7 +36,7 @@ def build_preset_cases(num_rows):
     if num_rows <= 0:
         return []
     anchors = sorted(set([
-        0,
+        1,
         max(0, num_rows // 4),
         max(0, num_rows // 2),
         max(0, num_rows - 1)
@@ -206,9 +206,6 @@ def update_charts(selected_row):
         "Actual Outcome": ["Yes" if o == 1 else "No" for o in actual_outcomes_filtered]
     }
     
-    # Create a DataFrame and sort it to match the lift plot order
-    table_df = pd.DataFrame(table_data)
-    
     # IMPORTANT: Make sure to explicitly sort the table in the EXACT same order as the plot
     # But REVERSED to match visual alignment (top to bottom vs bottom to top)
     table_df = pd.DataFrame(table_data)
@@ -295,7 +292,7 @@ app.layout = html.Div([
         html.P(
             "Explore how multitask models surface critical ED risks in seconds. "
             "Launch the interactive demo to inspect calibrated probabilities, lift scores, "
-            "and actual patient outcomes—similar to the KNOWNET showcase.",
+            "and actual patient outcomes",
             style={"maxWidth": "800px", "margin": "0 auto", "textAlign": "center"}
         ),
         html.Div([
