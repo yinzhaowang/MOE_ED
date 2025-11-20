@@ -1,5 +1,6 @@
 # Import necessary libraries
 from dash import Dash, html, dcc, Input, Output, State
+from dash.exceptions import PreventUpdate
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -28,6 +29,32 @@ dataset = TensorDataset(X_t, y_t)
 
 batch_size = 256  # Define batch size if not already defined
 test_dl = DataLoader(dataset, batch_size=batch_size, shuffle=False)
+
+
+def build_preset_cases(num_rows):
+    """Generate preset demo cases spread across the dataset."""
+    if num_rows <= 0:
+        return []
+    anchors = sorted(set([
+        0,
+        max(0, num_rows // 4),
+        max(0, num_rows // 2),
+        max(0, num_rows - 1)
+    ]))
+    labels = [
+        "Case A – Baseline Triage",
+        "Case B – Moderate Risk Signals",
+        "Case C – Elevated Complications",
+        "Case D – Critical Thresholds"
+    ]
+    options = []
+    for i, idx in enumerate(anchors):
+        label = labels[i] if i < len(labels) else f"Case {i + 1}"
+        options.append({"label": f"{label} (row {idx})", "value": idx})
+    return options
+
+
+PRESET_CASES = build_preset_cases(X_np.shape[0])
 
 # ---- Model Loading ----
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -247,6 +274,18 @@ def toggle_views(demo_active):
         return {"display": "none"}, {"display": "block"}
     return {"display": "block"}, {"display": "none"}
 
+
+@app.callback(
+    Output("row-input", "value"),
+    Input("preset-selector", "value"),
+    prevent_initial_call=True
+)
+def load_preset_row(selected_row):
+    """Populate the row selector when a preset case is chosen."""
+    if selected_row is None:
+        raise PreventUpdate
+    return selected_row
+
 # ---- Dashboard Layout ----
 app.layout = html.Div([
     dcc.Store(id="demo-mode", data=False),
@@ -281,6 +320,13 @@ app.layout = html.Div([
         html.Div([
             html.Label("Select Test Case Row:"),
             dcc.Input(id="row-input", type="number", min=0, max=X_np.shape[0] - 1, step=1, value=0),
+            dcc.Dropdown(
+                id="preset-selector",
+                options=PRESET_CASES,
+                placeholder="Or choose a curated demo patient",
+                clearable=True,
+                style={"width": "420px", "marginTop": "10px"}
+            )
         ], style={"margin": "20px"}),
 
         html.Div([
