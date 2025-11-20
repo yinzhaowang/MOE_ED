@@ -1,5 +1,5 @@
 # Import necessary libraries
-from dash import Dash, html, dcc, Input, Output
+from dash import Dash, html, dcc, Input, Output, State
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
@@ -15,7 +15,7 @@ import math
 app = Dash(__name__)
 
 # ---- Data Loading ----
-df_test = pd.read_csv("../../data/test_with_outcomes.csv")
+df_test = pd.read_csv("data/test_with_outcomes.csv")
 raw_feats = df_test.loc[:, col_list]
 feat_df = raw_feats.select_dtypes(include=[np.number, bool])
 feat_df = feat_df.fillna(feat_df.mean())
@@ -222,26 +222,79 @@ def update_charts(selected_row):
     
     return lift_fig, table_fig  # Return both figures
 
+# ---- Demo View State Management ----
+@app.callback(
+    Output("demo-mode", "data"),
+    Input("launch-demo-button", "n_clicks"),
+    State("demo-mode", "data"),
+    prevent_initial_call=True
+)
+def activate_demo(n_clicks, current_state):
+    """Flip the demo flag once the user clicks the launch button."""
+    if n_clicks:
+        return True
+    return current_state
+
+
+@app.callback(
+    Output("landing-view", "style"),
+    Output("dashboard-view", "style"),
+    Input("demo-mode", "data")
+)
+def toggle_views(demo_active):
+    """Hide the landing page and reveal the dashboard once demo mode is active."""
+    if demo_active:
+        return {"display": "none"}, {"display": "block"}
+    return {"display": "block"}, {"display": "none"}
+
 # ---- Dashboard Layout ----
 app.layout = html.Div([
-    html.H1("ED Decision-Making Dashboard", style={"textAlign": "center"}),
+    dcc.Store(id="demo-mode", data=False),
 
     html.Div([
-        html.Label("Select Test Case Row:"),
-        dcc.Input(id="row-input", type="number", min=0, max=X_np.shape[0] - 1, step=1, value=0),
-    ], style={"margin": "20px"}),
-
-    html.Div([
-        html.H2("Selected Test Case Results"),
+        html.H1("ED Risk Intelligence Demo", style={"textAlign": "center", "marginBottom": "10px"}),
+        html.P(
+            "Explore how multitask models surface critical ED risks in seconds. "
+            "Launch the interactive demo to inspect calibrated probabilities, lift scores, "
+            "and actual patient outcomes—similar to the KNOWNET showcase.",
+            style={"maxWidth": "800px", "margin": "0 auto", "textAlign": "center"}
+        ),
+        html.Div([
+            html.Button("Launch Demo", id="launch-demo-button", n_clicks=0,
+                        style={"padding": "12px 30px", "fontSize": "18px", "cursor": "pointer"})
+        ], style={"textAlign": "center", "marginTop": "30px"}),
         html.Div([
             html.Div([
-                dcc.Graph(id="lift-bar-chart", config={'displayModeBar': False})
-            ], style={"width": "70%", "display": "inline-block", "vertical-align": "top", "padding": "0px"}),
+                html.H3("What you'll see"),
+                html.Ul([
+                    html.Li("Condition-level risk lift ranked from high to low"),
+                    html.Li("Calibrated probabilities compared against triage thresholds"),
+                    html.Li("Actual patient outcomes for rapid validation")
+                ])
+            ], style={"maxWidth": "500px", "margin": "40px auto", "textAlign": "left"})
+        ])
+    ], id="landing-view", style={"padding": "60px 20px"}),
+
+    html.Div([
+        html.H1("ED Decision-Making Dashboard", style={"textAlign": "center"}),
+
+        html.Div([
+            html.Label("Select Test Case Row:"),
+            dcc.Input(id="row-input", type="number", min=0, max=X_np.shape[0] - 1, step=1, value=0),
+        ], style={"margin": "20px"}),
+
+        html.Div([
+            html.H2("Selected Test Case Results"),
             html.Div([
-                dcc.Graph(id="outcome-table", config={'displayModeBar': False})
-            ], style={"width": "30%", "display": "inline-block", "vertical-align": "top", "padding": "0px"})
-        ], style={"display": "flex", "align-items": "stretch", "height": "100%"})
-    ])
+                html.Div([
+                    dcc.Graph(id="lift-bar-chart", config={'displayModeBar': False})
+                ], style={"width": "70%", "display": "inline-block", "vertical-align": "top", "padding": "0px"}),
+                html.Div([
+                    dcc.Graph(id="outcome-table", config={'displayModeBar': False})
+                ], style={"width": "30%", "display": "inline-block", "vertical-align": "top", "padding": "0px"})
+            ], style={"display": "flex", "align-items": "stretch", "height": "100%"})
+        ])
+    ], id="dashboard-view", style={"display": "none"})
 ])
 
 # Run the app
